@@ -13,6 +13,7 @@ input int    SessionEndHour      = 23;       // Session end hour (broker time)
 input int    SessionEndMinute    = 59;       // Session end minute
 input int    PointsPerPriceStep  = 10;       // Price bucket size in points
 input int    MaxProfileRows      = 180;      // Maximum rows per profile
+input bool   UseVisibleChartTime = true;     // Anchor profiles to visible chart/tester time
 input double ValueAreaPercent    = 70.0;     // Value area percentage
 input double MaxWidthPercent     = 55.0;     // Maximum histogram width as % of session
 input bool   ShowPOC             = true;     // Show point of control
@@ -63,11 +64,12 @@ int OnCalculate(const int rates_total,
 //+------------------------------------------------------------------+
 void DrawProfiles(const datetime &time[], const double &high[], const double &low[], const int rates_total)
 {
-   datetime today = DateStart(TimeCurrent());
+   datetime anchor_time = GetProfileAnchorTime(time, rates_total);
+   datetime anchor_session_day = GetAnchorSessionDay(anchor_time);
 
    for(int day = 0; day < DaysToShow; day++)
    {
-      datetime session_day = today - (day * 86400);
+      datetime session_day = anchor_session_day - (day * 86400);
       datetime session_start = session_day + (SessionStartHour * 3600) + (SessionStartMinute * 60);
       datetime session_end = session_day + (SessionEndHour * 3600) + (SessionEndMinute * 60);
 
@@ -76,6 +78,49 @@ void DrawProfiles(const datetime &time[], const double &high[], const double &lo
 
       BuildSessionProfile(day, session_start, session_end, time, high, low, rates_total);
    }
+}
+
+//+------------------------------------------------------------------+
+datetime GetProfileAnchorTime(const datetime &time[], const int rates_total)
+{
+   datetime anchor_time = time[0];
+
+   if(!UseVisibleChartTime)
+      return(anchor_time);
+
+   int first_visible_bar = WindowFirstVisibleBar();
+   int bars_per_chart = WindowBarsPerChart();
+
+   if(first_visible_bar < 0 || bars_per_chart <= 0)
+      return(anchor_time);
+
+   int right_visible_bar = first_visible_bar - bars_per_chart + 1;
+
+   if(right_visible_bar < 0)
+      right_visible_bar = 0;
+
+   if(right_visible_bar >= rates_total)
+      right_visible_bar = rates_total - 1;
+
+   return(time[right_visible_bar]);
+}
+
+//+------------------------------------------------------------------+
+datetime GetAnchorSessionDay(const datetime anchor_time)
+{
+   datetime anchor_day = DateStart(anchor_time);
+   datetime session_start = anchor_day + (SessionStartHour * 3600) + (SessionStartMinute * 60);
+   datetime session_end = anchor_day + (SessionEndHour * 3600) + (SessionEndMinute * 60);
+
+   if(session_end <= session_start)
+   {
+      session_end += 86400;
+
+      if(anchor_time < session_start && anchor_time < session_end)
+         anchor_day -= 86400;
+   }
+
+   return(anchor_day);
 }
 
 //+------------------------------------------------------------------+
