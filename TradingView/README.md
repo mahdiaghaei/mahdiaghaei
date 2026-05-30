@@ -1,6 +1,6 @@
 # TradingView Market Profile / Volume Profile (Native Style)
 
-`MarketProfile.pine` is a Pine Script v5 overlay indicator that recreates a TradingView-native-style session profile for use on TradingView charts.
+`MarketProfile.pine` is a Pine Script v6 overlay indicator that recreates a TradingView-native-style session profile for use on TradingView charts.
 
 ## What it draws
 
@@ -14,7 +14,7 @@
 ## Installation
 
 1. Open **TradingView → Pine Editor**.
-2. Copy all contents of `TradingView/MarketProfile.pine` into the editor.
+2. Copy all contents of `TradingView/MarketProfile.pine` into the editor. The first line must remain `//@version=6`.
 3. Click **Save** and then **Add to chart**.
 4. Open the indicator settings and adjust the session, timezone, row sizing, width, colors, and display mode.
 
@@ -34,4 +34,4 @@
 
 ## Notes and limitations
 
-TradingView Pine scripts cannot create the exact built-in chart type UI or access every internal feature of TradingView's native paid Volume Profile tools. This script is an overlay approximation with comparable controls and visual behavior, and it recalculates from the loaded chart bars so it works naturally in TradingView Bar Replay.
+TradingView Pine Script v6 scripts cannot create the exact built-in chart type UI or access every internal feature of TradingView's native paid Volume Profile tools. This script is an overlay approximation with comparable controls and visual behavior, and it recalculates from the loaded chart bars so it works naturally in TradingView Bar Replay.
