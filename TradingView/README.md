@@ -4,7 +4,7 @@
 
 ## What it draws
 
-- Session-based horizontal profile on the price chart.
+- Real-time session-based horizontal profile on the price chart.
 - Volume Profile mode using TradingView volume/tick-volume data.
 - TPO mode for a classic Market Profile-style count.
 - POC, VAH, and VAL levels.
@@ -34,4 +34,4 @@
 
 ## Notes and limitations
 
-TradingView Pine Script v6 scripts cannot create the exact built-in chart type UI or access every internal feature of TradingView's native paid Volume Profile tools. This script is an overlay approximation with comparable controls and visual behavior, and it recalculates from the loaded chart bars so it works naturally in TradingView Bar Replay.
+TradingView Pine Script v6 scripts cannot create the exact built-in chart type UI or access every internal feature of TradingView's native paid Volume Profile tools. This script is an overlay approximation with comparable controls and visual behavior. It is intentionally real-time only and does not include the Soft4FX/Strategy Tester chart-time anchoring behavior used by the MT4 indicator.
