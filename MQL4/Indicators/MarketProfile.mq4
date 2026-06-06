@@ -7,6 +7,8 @@
 #property indicator_buffers 0
 
 input int    DaysToShow          = 5;        // Number of calendar days/sessions to draw
+input bool   ShowWeeklyProfiles  = false;    // Also draw weekly profiles
+input int    WeeksToShow         = 2;        // Number of broker-time weeks to draw
 input int    SessionStartHour    = 0;        // Session start hour (broker time)
 input int    SessionStartMinute  = 0;        // Session start minute
 input int    SessionEndHour      = 23;       // Session end hour (broker time)
@@ -76,7 +78,28 @@ void DrawProfiles(const datetime &time[], const double &high[], const double &lo
       if(session_end <= session_start)
          session_end += 86400;
 
-      BuildSessionProfile(day, session_start, session_end, time, high, low, rates_total);
+      BuildSessionProfile("D_" + IntegerToString(day), session_start, session_end, time, high, low, rates_total);
+   }
+
+   if(ShowWeeklyProfiles)
+      DrawWeeklyProfiles(anchor_time, time, high, low, rates_total);
+}
+
+//+------------------------------------------------------------------+
+void DrawWeeklyProfiles(const datetime anchor_time,
+                        const datetime &time[],
+                        const double &high[],
+                        const double &low[],
+                        const int rates_total)
+{
+   datetime anchor_week_start = WeekStart(anchor_time);
+
+   for(int week = 0; week < WeeksToShow; week++)
+   {
+      datetime week_start = anchor_week_start - (week * 7 * 86400);
+      datetime week_end = week_start + (7 * 86400);
+
+      BuildSessionProfile("W_" + IntegerToString(week), week_start, week_end, time, high, low, rates_total);
    }
 }
 
@@ -124,7 +147,7 @@ datetime GetAnchorSessionDay(const datetime anchor_time)
 }
 
 //+------------------------------------------------------------------+
-void BuildSessionProfile(const int session_index,
+void BuildSessionProfile(const string profile_id,
                          const datetime session_start,
                          const datetime session_end,
                          const datetime &time[],
@@ -187,7 +210,7 @@ void BuildSessionProfile(const int session_index,
    int value_high_row = poc_row;
 
    CalculateValueArea(counts, rows, total_tpos, poc_row, value_low_row, value_high_row);
-   DrawSessionObjects(session_index, session_start, session_end, session_low, step, counts,
+   DrawSessionObjects(profile_id, session_start, session_end, session_low, step, counts,
                       rows, poc_row, value_low_row, value_high_row);
 }
 
@@ -275,7 +298,7 @@ void CalculateValueArea(const int &counts[],
 }
 
 //+------------------------------------------------------------------+
-void DrawSessionObjects(const int session_index,
+void DrawSessionObjects(const string profile_id,
                         const datetime session_start,
                         const datetime session_end,
                         const double session_low,
@@ -312,7 +335,7 @@ void DrawSessionObjects(const int session_index,
       datetime row_end = session_start + width_seconds;
       color row_color = (profile_row >= value_low_row && profile_row <= value_high_row) ? ValueAreaColor : ProfileColor;
 
-      string rectangle_name = ObjectPrefix + IntegerToString(session_index) + "_ROW_" + IntegerToString(profile_row);
+      string rectangle_name = ObjectPrefix + profile_id + "_ROW_" + IntegerToString(profile_row);
       ObjectCreate(0, rectangle_name, OBJ_RECTANGLE, 0, session_start, price_bottom, row_end, price_top);
       ObjectSetInteger(0, rectangle_name, OBJPROP_COLOR, row_color);
       ObjectSetInteger(0, rectangle_name, OBJPROP_BACK, true);
@@ -324,29 +347,29 @@ void DrawSessionObjects(const int session_index,
    double val_price = NormalizeDouble(session_low + (value_low_row * step) + (step / 2.0), Digits);
 
    if(ShowPOC)
-      DrawLevel(session_index, "POC", session_start, session_end, poc_price, POCColor, STYLE_SOLID, 2);
+      DrawLevel(profile_id, "POC", session_start, session_end, poc_price, POCColor, STYLE_SOLID, 2);
 
    if(ShowValueArea)
    {
-      DrawLevel(session_index, "VAH", session_start, session_end, vah_price, ValueAreaColor, STYLE_DOT, 1);
-      DrawLevel(session_index, "VAL", session_start, session_end, val_price, ValueAreaColor, STYLE_DOT, 1);
+      DrawLevel(profile_id, "VAH", session_start, session_end, vah_price, ValueAreaColor, STYLE_DOT, 1);
+      DrawLevel(profile_id, "VAL", session_start, session_end, val_price, ValueAreaColor, STYLE_DOT, 1);
    }
 
    if(ShowLabels)
    {
       if(ShowPOC)
-         DrawLabel(session_index, "POC_LABEL", session_end, poc_price, "POC " + DoubleToString(poc_price, Digits), POCColor);
+         DrawLabel(profile_id, "POC_LABEL", session_end, poc_price, "POC " + DoubleToString(poc_price, Digits), POCColor);
 
       if(ShowValueArea)
       {
-         DrawLabel(session_index, "VAH_LABEL", session_end, vah_price, "VAH " + DoubleToString(vah_price, Digits), TextColor);
-         DrawLabel(session_index, "VAL_LABEL", session_end, val_price, "VAL " + DoubleToString(val_price, Digits), TextColor);
+         DrawLabel(profile_id, "VAH_LABEL", session_end, vah_price, "VAH " + DoubleToString(vah_price, Digits), TextColor);
+         DrawLabel(profile_id, "VAL_LABEL", session_end, val_price, "VAL " + DoubleToString(val_price, Digits), TextColor);
       }
    }
 }
 
 //+------------------------------------------------------------------+
-void DrawLevel(const int session_index,
+void DrawLevel(const string profile_id,
                const string suffix,
                const datetime session_start,
                const datetime session_end,
@@ -355,7 +378,7 @@ void DrawLevel(const int session_index,
                const ENUM_LINE_STYLE line_style,
                const int line_width)
 {
-   string name = ObjectPrefix + IntegerToString(session_index) + "_" + suffix;
+   string name = ObjectPrefix + profile_id + "_" + suffix;
    ObjectCreate(0, name, OBJ_TREND, 0, session_start, price, session_end, price);
    ObjectSetInteger(0, name, OBJPROP_RAY_RIGHT, false);
    ObjectSetInteger(0, name, OBJPROP_COLOR, line_color);
@@ -364,14 +387,14 @@ void DrawLevel(const int session_index,
 }
 
 //+------------------------------------------------------------------+
-void DrawLabel(const int session_index,
+void DrawLabel(const string profile_id,
                const string suffix,
                const datetime label_time,
                const double price,
                const string text,
                const color label_color)
 {
-   string name = ObjectPrefix + IntegerToString(session_index) + "_" + suffix;
+   string name = ObjectPrefix + profile_id + "_" + suffix;
    ObjectCreate(0, name, OBJ_TEXT, 0, label_time, price);
    ObjectSetString(0, name, OBJPROP_TEXT, text);
    ObjectSetString(0, name, OBJPROP_FONT, "Arial");
@@ -383,6 +406,19 @@ void DrawLabel(const int session_index,
 datetime DateStart(const datetime source_time)
 {
    return(StringToTime(TimeToString(source_time, TIME_DATE)));
+}
+
+//+------------------------------------------------------------------+
+datetime WeekStart(const datetime source_time)
+{
+   datetime day_start = DateStart(source_time);
+   int day_of_week = TimeDayOfWeek(day_start);
+   int days_since_monday = day_of_week - 1;
+
+   if(days_since_monday < 0)
+      days_since_monday = 6;
+
+   return(day_start - (days_since_monday * 86400));
 }
 
 //+------------------------------------------------------------------+
