@@ -6,6 +6,12 @@
 #property indicator_chart_window
 #property indicator_buffers 0
 
+enum ENUM_PROFILE_LEVEL_MODE
+{
+   LEVEL_MODE_FIXED = 0,       // Draw fixed final POC/VA levels
+   LEVEL_MODE_DEVELOPING = 1   // Draw developing POC/VA levels
+};
+
 input int    DaysToShow          = 5;        // Number of calendar days/sessions to draw
 input bool   ShowWeeklyProfiles  = false;    // Also draw weekly profiles
 input int    WeeksToShow         = 2;        // Number of broker-time weeks to draw
@@ -18,6 +24,8 @@ input int    MaxProfileRows      = 180;      // Maximum rows per profile
 input bool   UseVisibleChartTime = true;     // Anchor profiles to visible chart/tester time
 input double ValueAreaPercent    = 70.0;     // Value area percentage
 input double MaxWidthPercent     = 55.0;     // Maximum histogram width as % of session
+input ENUM_PROFILE_LEVEL_MODE LevelMode = LEVEL_MODE_FIXED; // Fixed or developing POC/VA
+input int    DevelopingStepBars = 1;        // Draw developing levels every N bars
 input bool   ShowPOC             = true;     // Show point of control
 input bool   ShowValueArea       = true;     // Show VAH and VAL
 input bool   ShowLabels          = true;     // Show text labels
@@ -212,6 +220,10 @@ void BuildSessionProfile(const string profile_id,
    CalculateValueArea(counts, rows, total_tpos, poc_row, value_low_row, value_high_row);
    DrawSessionObjects(profile_id, session_start, session_end, session_low, step, counts,
                       rows, poc_row, value_low_row, value_high_row);
+
+   if(LevelMode == LEVEL_MODE_DEVELOPING)
+      DrawDevelopingLevels(profile_id, session_start, session_end, time, high, low,
+                           rates_total, session_low, step, rows);
 }
 
 //+------------------------------------------------------------------+
@@ -346,24 +358,147 @@ void DrawSessionObjects(const string profile_id,
    double vah_price = NormalizeDouble(session_low + (value_high_row * step) + (step / 2.0), Digits);
    double val_price = NormalizeDouble(session_low + (value_low_row * step) + (step / 2.0), Digits);
 
-   if(ShowPOC)
-      DrawLevel(profile_id, "POC", session_start, session_end, poc_price, POCColor, STYLE_SOLID, 2);
-
-   if(ShowValueArea)
-   {
-      DrawLevel(profile_id, "VAH", session_start, session_end, vah_price, ValueAreaColor, STYLE_DOT, 1);
-      DrawLevel(profile_id, "VAL", session_start, session_end, val_price, ValueAreaColor, STYLE_DOT, 1);
-   }
-
-   if(ShowLabels)
+   if(LevelMode == LEVEL_MODE_FIXED)
    {
       if(ShowPOC)
-         DrawLabel(profile_id, "POC_LABEL", session_end, poc_price, "POC " + DoubleToString(poc_price, Digits), POCColor);
+         DrawLevel(profile_id, "POC", session_start, session_end, poc_price, POCColor, STYLE_SOLID, 2);
 
       if(ShowValueArea)
       {
-         DrawLabel(profile_id, "VAH_LABEL", session_end, vah_price, "VAH " + DoubleToString(vah_price, Digits), TextColor);
-         DrawLabel(profile_id, "VAL_LABEL", session_end, val_price, "VAL " + DoubleToString(val_price, Digits), TextColor);
+         DrawLevel(profile_id, "VAH", session_start, session_end, vah_price, ValueAreaColor, STYLE_DOT, 1);
+         DrawLevel(profile_id, "VAL", session_start, session_end, val_price, ValueAreaColor, STYLE_DOT, 1);
+      }
+
+      if(ShowLabels)
+      {
+         if(ShowPOC)
+            DrawLabel(profile_id, "POC_LABEL", session_end, poc_price, "POC " + DoubleToString(poc_price, Digits), POCColor);
+
+         if(ShowValueArea)
+         {
+            DrawLabel(profile_id, "VAH_LABEL", session_end, vah_price, "VAH " + DoubleToString(vah_price, Digits), TextColor);
+            DrawLabel(profile_id, "VAL_LABEL", session_end, val_price, "VAL " + DoubleToString(val_price, Digits), TextColor);
+         }
+      }
+   }
+}
+
+//+------------------------------------------------------------------+
+void DrawDevelopingLevels(const string profile_id,
+                          const datetime session_start,
+                          const datetime session_end,
+                          const datetime &time[],
+                          const double &high[],
+                          const double &low[],
+                          const int rates_total,
+                          const double session_low,
+                          const double step,
+                          const int rows)
+{
+   int session_bars[];
+
+   for(int i = rates_total - 1; i >= 0; i--)
+   {
+      if(time[i] < session_start || time[i] >= session_end)
+         continue;
+
+      int session_bar_count = ArraySize(session_bars);
+      ArrayResize(session_bars, session_bar_count + 1);
+      session_bars[session_bar_count] = i;
+   }
+
+   if(ArraySize(session_bars) <= 0)
+      return;
+
+   int developing_counts[];
+   ArrayResize(developing_counts, rows);
+   ArrayInitialize(developing_counts, 0);
+
+   int total_tpos = 0;
+   int segment_number = 0;
+   int step_bars = DevelopingStepBars;
+   if(step_bars < 1)
+      step_bars = 1;
+   double final_poc_price = 0.0;
+   double final_vah_price = 0.0;
+   double final_val_price = 0.0;
+   datetime final_label_time = session_end;
+   bool has_developing_levels = false;
+
+   for(int position = 0; position < ArraySize(session_bars); position++)
+   {
+      int bar = session_bars[position];
+      int first_row = PriceToRow(low[bar], session_low, step, rows);
+      int last_row = PriceToRow(high[bar], session_low, step, rows);
+
+      for(int row = first_row; row <= last_row; row++)
+      {
+         developing_counts[row]++;
+         total_tpos++;
+      }
+
+      if(total_tpos <= 0)
+         continue;
+
+      bool should_draw_segment = ((position % step_bars) == 0 || position == ArraySize(session_bars) - 1);
+      if(!should_draw_segment)
+         continue;
+
+      int developing_poc_row = FindPOC(developing_counts, rows);
+      int developing_value_low_row = developing_poc_row;
+      int developing_value_high_row = developing_poc_row;
+      CalculateValueArea(developing_counts, rows, total_tpos, developing_poc_row,
+                         developing_value_low_row, developing_value_high_row);
+
+      datetime segment_start = time[bar];
+      datetime segment_end = session_end;
+
+      if(position < ArraySize(session_bars) - 1)
+         segment_end = time[session_bars[position + 1]];
+      else
+      {
+         datetime fallback_end = segment_start + (Period() * 60);
+         if(fallback_end < segment_end)
+            segment_end = fallback_end;
+      }
+
+      if(segment_end <= segment_start)
+         segment_end = segment_start + 60;
+
+      double poc_price = NormalizeDouble(session_low + (developing_poc_row * step) + (step / 2.0), Digits);
+      double vah_price = NormalizeDouble(session_low + (developing_value_high_row * step) + (step / 2.0), Digits);
+      double val_price = NormalizeDouble(session_low + (developing_value_low_row * step) + (step / 2.0), Digits);
+      string segment_suffix = IntegerToString(segment_number);
+
+      if(ShowPOC)
+         DrawLevel(profile_id, "DPOC_" + segment_suffix, segment_start, segment_end, poc_price, POCColor, STYLE_SOLID, 2);
+
+      if(ShowValueArea)
+      {
+         DrawLevel(profile_id, "DVAH_" + segment_suffix, segment_start, segment_end, vah_price, ValueAreaColor, STYLE_DOT, 1);
+         DrawLevel(profile_id, "DVAL_" + segment_suffix, segment_start, segment_end, val_price, ValueAreaColor, STYLE_DOT, 1);
+      }
+
+      final_poc_price = poc_price;
+      final_vah_price = vah_price;
+      final_val_price = val_price;
+      final_label_time = segment_end;
+      has_developing_levels = true;
+      segment_number++;
+   }
+
+   if(ShowLabels && has_developing_levels)
+   {
+      if(ShowPOC)
+         DrawLabel(profile_id, "DPOC_LABEL", final_label_time, final_poc_price,
+                   "DPOC " + DoubleToString(final_poc_price, Digits), POCColor);
+
+      if(ShowValueArea)
+      {
+         DrawLabel(profile_id, "DVAH_LABEL", final_label_time, final_vah_price,
+                   "DVAH " + DoubleToString(final_vah_price, Digits), TextColor);
+         DrawLabel(profile_id, "DVAL_LABEL", final_label_time, final_val_price,
+                   "DVAL " + DoubleToString(final_val_price, Digits), TextColor);
       }
    }
 }
