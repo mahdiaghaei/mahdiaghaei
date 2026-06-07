@@ -1,0 +1,222 @@
+//@version=6
+indicator("Market Profile / Volume Profile (Native Style)", "MPVP", overlay=true, max_boxes_count=500, max_lines_count=200, max_labels_count=200, max_bars_back=5000)
+
+//------------------------------------------------------------------------------
+// Inputs
+//------------------------------------------------------------------------------
+sessionInput       = input.session("0000-2359", "Session")
+timezoneInput      = input.string("Exchange", "Session timezone", options=["Exchange", "Etc/UTC", "America/New_York", "Europe/London", "Asia/Tokyo"])
+profilesToShow     = input.int(3, "Profiles to show", minval=1, maxval=12)
+lookbackBars        = input.int(1200, "Calculation lookback bars", minval=100, maxval=5000)
+profileMode        = input.string("Volume", "Profile source", options=["Volume", "TPO"])
+rowMode            = input.string("Number of rows", "Row size mode", options=["Number of rows", "Ticks per row"])
+rowsInput          = input.int(48, "Rows", minval=8, maxval=160)
+ticksPerRowInput   = input.int(10, "Ticks per row", minval=1, maxval=10000)
+valueAreaPercent   = input.float(70.0, "Value Area %", minval=1.0, maxval=100.0, step=0.5)
+profileWidthBars   = input.int(28, "Profile width (bars)", minval=3, maxval=120)
+horizontalOffset   = input.int(2, "Horizontal offset (bars)", minval=0, maxval=100)
+placement          = input.string("Right", "Profile placement", options=["Right", "Left"])
+volumeDisplay      = input.string("Up / Down", "Volume display", options=["Up / Down", "Total"])
+showValueArea      = input.bool(true, "Highlight value area")
+showPOC            = input.bool(true, "Show POC")
+showVALines        = input.bool(true, "Show VAH / VAL")
+showLabels         = input.bool(true, "Show labels")
+
+upColor            = input.color(color.rgb(38, 166, 154), "Up volume color")
+downColor          = input.color(color.rgb(239, 83, 80), "Down volume color")
+totalColor         = input.color(color.rgb(70, 130, 180), "Total/TPO color")
+valueAreaColor     = input.color(color.rgb(30, 144, 255), "Value Area color")
+pocColor           = input.color(color.rgb(255, 82, 82), "POC color")
+vaLineColor        = input.color(color.rgb(255, 193, 7), "VAH / VAL color")
+labelTextColor     = input.color(color.white, "Label text color")
+outsideOpacity     = input.int(78, "Outside VA opacity", minval=0, maxval=100)
+valueAreaOpacity   = input.int(50, "Value Area opacity", minval=0, maxval=100)
+
+//------------------------------------------------------------------------------
+// Object storage
+//------------------------------------------------------------------------------
+var array<box> drawnBoxes = array.new<box>()
+var array<line> drawnLines = array.new<line>()
+var array<label> drawnLabels = array.new<label>()
+
+clearDrawings() =>
+    while array.size(drawnBoxes) > 0
+        box.delete(array.pop(drawnBoxes))
+    while array.size(drawnLines) > 0
+        line.delete(array.pop(drawnLines))
+    while array.size(drawnLabels) > 0
+        label.delete(array.pop(drawnLabels))
+
+//------------------------------------------------------------------------------
+// Helpers
+//------------------------------------------------------------------------------
+selectedTimezone = timezoneInput == "Exchange" ? syminfo.timezone : timezoneInput
+
+isInSession(int offset) =>
+    not na(time(timeframe.period, sessionInput, selectedTimezone)[offset])
+
+addLevelLine(int x1, float y, int x2, color lineColor, bool isPocLine) =>
+    line ln = line.new(x1, y, x2, y, xloc=xloc.bar_index, extend=extend.none, color=lineColor, style=isPocLine ? line.style_solid : line.style_dashed, width=isPocLine ? 2 : 1)
+    array.push(drawnLines, ln)
+
+addLabel(int x, float y, string txt, color bgColor) =>
+    label lb = label.new(x, y, txt, xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_left, textcolor=labelTextColor, color=bgColor, size=size.tiny)
+    array.push(drawnLabels, lb)
+
+calcValueArea(array<float> totals, int pocIndex, float targetVolume) =>
+    int rowCount = array.size(totals)
+    int lowIndex = pocIndex
+    int highIndex = pocIndex
+    float accumulated = array.get(totals, pocIndex)
+    while accumulated < targetVolume and (lowIndex > 0 or highIndex < rowCount - 1)
+        float lowerVol = lowIndex > 0 ? array.get(totals, lowIndex - 1) : -1.0
+        float upperVol = highIndex < rowCount - 1 ? array.get(totals, highIndex + 1) : -1.0
+        if upperVol >= lowerVol
+            highIndex += highIndex < rowCount - 1 ? 1 : 0
+            accumulated += upperVol > 0 ? upperVol : 0
+        else
+            lowIndex -= lowIndex > 0 ? 1 : 0
+            accumulated += lowerVol > 0 ? lowerVol : 0
+    [lowIndex, highIndex]
+
+//------------------------------------------------------------------------------
+// Main renderer: real-time only.
+//------------------------------------------------------------------------------
+if barstate.islast
+    clearDrawings()
+
+    if barstate.isrealtime
+        int maxOffset = math.min(lookbackBars - 1, bar_index)
+        array<int> sessionStarts = array.new<int>()
+        array<int> sessionEnds = array.new<int>()
+
+        bool wasInSession = false
+        int activeEnd = na
+
+        for offset = 0 to maxOffset
+            bool inside = isInSession(offset)
+            if inside and not wasInSession
+                activeEnd := offset
+            bool nextInside = offset < maxOffset ? isInSession(offset + 1) : false
+            if inside and not nextInside
+                array.push(sessionStarts, offset)
+                array.push(sessionEnds, activeEnd)
+                if array.size(sessionStarts) >= profilesToShow
+                    break
+            wasInSession := inside
+
+        int foundSessions = array.size(sessionStarts)
+        if foundSessions == 0
+            if showLabels
+                addLabel(bar_index, close, "No bars in selected session", color.new(color.gray, 25))
+        else
+            for s = 0 to foundSessions - 1
+                int startOffset = array.get(sessionStarts, s)
+                int endOffset = array.get(sessionEnds, s)
+
+                float sessionHigh = high[endOffset]
+                float sessionLow = low[endOffset]
+                for offset = endOffset to startOffset
+                    sessionHigh := math.max(sessionHigh, high[offset])
+                    sessionLow := math.min(sessionLow, low[offset])
+
+                float minTick = syminfo.mintick
+                float profileRange = math.max(sessionHigh - sessionLow, minTick)
+                float rowStep = rowMode == "Ticks per row" ? math.max(ticksPerRowInput * minTick, minTick) : math.max(profileRange / rowsInput, minTick)
+                int rowCount = math.min(160, math.max(1, int(math.ceil(profileRange / rowStep))))
+                int boxesPerRow = volumeDisplay == "Up / Down" and profileMode != "TPO" ? 2 : 1
+                int maxDrawableRows = math.max(1, int(math.floor(480 / math.max(1, foundSessions * boxesPerRow))))
+                rowCount := math.min(rowCount, maxDrawableRows)
+                rowStep := profileRange / rowCount
+
+                array<float> upRows = array.new<float>(rowCount, 0.0)
+                array<float> downRows = array.new<float>(rowCount, 0.0)
+                float totalVolume = 0.0
+
+                for offset = endOffset to startOffset
+                    float barHigh = high[offset]
+                    float barLow = low[offset]
+                    float barRange = math.max(barHigh - barLow, minTick)
+                    float sourceValue = profileMode == "Volume" ? nz(volume[offset], 0.0) : 1.0
+                    bool upBar = close[offset] >= open[offset]
+                    int firstRow = math.max(0, math.min(rowCount - 1, int(math.floor((barLow - sessionLow) / rowStep))))
+                    int lastRow = math.max(0, math.min(rowCount - 1, int(math.floor((barHigh - sessionLow) / rowStep))))
+
+                    for row = firstRow to lastRow
+                        float rowLow = sessionLow + row * rowStep
+                        float rowHigh = rowLow + rowStep
+                        float overlap = math.max(0.0, math.min(barHigh, rowHigh) - math.max(barLow, rowLow))
+                        float weight = barRange > 0 ? overlap / barRange : 1.0 / math.max(1, lastRow - firstRow + 1)
+                        float contribution = sourceValue * weight
+                        if upBar
+                            array.set(upRows, row, array.get(upRows, row) + contribution)
+                        else
+                            array.set(downRows, row, array.get(downRows, row) + contribution)
+                        totalVolume += contribution
+
+                array<float> totals = array.new<float>(rowCount, 0.0)
+                float maxRowVolume = 0.0
+                int pocIndex = 0
+                for row = 0 to rowCount - 1
+                    float rowTotal = array.get(upRows, row) + array.get(downRows, row)
+                    array.set(totals, row, rowTotal)
+                    if rowTotal > maxRowVolume
+                        maxRowVolume := rowTotal
+                        pocIndex := row
+
+                float targetValueArea = totalVolume * valueAreaPercent / 100.0
+                [valIndex, vahIndex] = calcValueArea(totals, pocIndex, targetValueArea)
+
+                int sessionStartBar = bar_index - startOffset
+                int sessionEndBar = bar_index - endOffset
+                int baseX = placement == "Right" ? sessionEndBar + horizontalOffset : sessionStartBar - horizontalOffset
+                if maxRowVolume > 0
+                    for row = 0 to rowCount - 1
+                        float rowTotal = array.get(totals, row)
+                        int rowWidth = math.max(1, int(math.round(profileWidthBars * rowTotal / maxRowVolume)))
+                        float y1 = sessionLow + row * rowStep
+                        float y2 = y1 + rowStep
+                        bool inValueArea = row >= valIndex and row <= vahIndex
+                        int opacity = inValueArea and showValueArea ? valueAreaOpacity : outsideOpacity
+                        int x1 = placement == "Right" ? baseX : baseX - rowWidth
+                        int x2 = placement == "Right" ? baseX + rowWidth : baseX
+
+                        if volumeDisplay == "Total" or profileMode == "TPO"
+                            color fillColor = inValueArea and showValueArea ? valueAreaColor : totalColor
+                            box bx = box.new(x1, y2, x2, y1, xloc=xloc.bar_index, bgcolor=color.new(fillColor, opacity), border_color=color.new(fillColor, 100))
+                            array.push(drawnBoxes, bx)
+                        else
+                            float upValue = array.get(upRows, row)
+                            int upWidth = rowTotal > 0 ? int(math.round(rowWidth * upValue / rowTotal)) : 0
+                            int downWidth = math.max(0, rowWidth - upWidth)
+                            if placement == "Right"
+                                if upWidth > 0
+                                    box upBox = box.new(baseX, y2, baseX + upWidth, y1, xloc=xloc.bar_index, bgcolor=color.new(upColor, opacity), border_color=color.new(upColor, 100))
+                                    array.push(drawnBoxes, upBox)
+                                if downWidth > 0
+                                    box dnBox = box.new(baseX + upWidth, y2, baseX + upWidth + downWidth, y1, xloc=xloc.bar_index, bgcolor=color.new(downColor, opacity), border_color=color.new(downColor, 100))
+                                    array.push(drawnBoxes, dnBox)
+                            else
+                                if downWidth > 0
+                                    box dnBox = box.new(baseX - downWidth, y2, baseX, y1, xloc=xloc.bar_index, bgcolor=color.new(downColor, opacity), border_color=color.new(downColor, 100))
+                                    array.push(drawnBoxes, dnBox)
+                                if upWidth > 0
+                                    box upBox = box.new(baseX - downWidth - upWidth, y2, baseX - downWidth, y1, xloc=xloc.bar_index, bgcolor=color.new(upColor, opacity), border_color=color.new(upColor, 100))
+                                    array.push(drawnBoxes, upBox)
+
+                int lineX1 = placement == "Right" ? baseX : baseX - profileWidthBars
+                int lineX2 = placement == "Right" ? baseX + profileWidthBars : baseX
+                float pocPrice = sessionLow + (pocIndex + 0.5) * rowStep
+                float vahPrice = sessionLow + (vahIndex + 1.0) * rowStep
+                float valPrice = sessionLow + valIndex * rowStep
+
+                if showPOC
+                    addLevelLine(lineX1, pocPrice, lineX2, pocColor, true)
+                if showVALines
+                    addLevelLine(lineX1, vahPrice, lineX2, vaLineColor, false)
+                    addLevelLine(lineX1, valPrice, lineX2, vaLineColor, false)
+                if showLabels
+                    int labelX = placement == "Right" ? lineX2 + 1 : lineX2 + 1
+                    addLabel(labelX, pocPrice, "POC", color.new(pocColor, 20))
+                    addLabel(labelX, vahPrice, "VAH", color.new(vaLineColor, 20))
+                    addLabel(labelX, valPrice, "VAL", color.new(vaLineColor, 20))
