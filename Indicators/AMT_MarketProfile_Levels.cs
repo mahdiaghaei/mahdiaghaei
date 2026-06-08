@@ -7,6 +7,8 @@ using System.Linq;
 using System.Windows.Media;
 using System.Xml.Serialization;
 using NinjaTrader.Core.FloatingPoint;
+using NinjaTrader.Data;
+using NinjaTrader.Gui;
 using NinjaTrader.Gui.Chart;
 using NinjaTrader.Gui.Tools;
 using NinjaTrader.NinjaScript;
@@ -219,7 +221,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 return;
 
             DateTime barTime = Times[0][0];
-            DateTime sessionDate = Bars.GetTradingDayFromLocal(barTime).Date;
+            DateTime sessionDate = GetSessionDate(barTime);
             DateTime weekStart = GetWeekStart(sessionDate);
             DateTime monthStart = new DateTime(sessionDate.Year, sessionDate.Month, 1);
 
@@ -254,6 +256,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 
         public override void OnRenderTargetChanged()
         {
+            base.OnRenderTargetChanged();
+
             if (labelRenderer != null)
                 labelRenderer.OnRenderTargetChanged();
         }
@@ -447,6 +451,17 @@ namespace NinjaTrader.NinjaScript.Indicators
         private void AddLevel(string name, double price, Brush background, Brush text)
         {
             levelManager.Add(new LevelDefinition(name, Instrument.MasterInstrument.RoundToTickSize(price), background, text));
+        }
+
+        private DateTime GetSessionDate(DateTime barTime)
+        {
+            // Use the compile-safe Bars.IsFirstBarOfSession flag for
+            // session rollover detection, and keep the active key unchanged for
+            // all other bars so overnight sessions do not split at midnight.
+            if (activeSessionDate == Core.Globals.MinDate || Bars == null)
+                return barTime.Date;
+
+            return Bars.IsFirstBarOfSession && CurrentBar > 1 ? barTime.Date : activeSessionDate;
         }
 
         private static DateTime GetWeekStart(DateTime date)
@@ -648,8 +663,6 @@ namespace NinjaTrader.NinjaScript.Indicators
             float labelHeight = Math.Max(18, textFormat.FontSize + 6);
             float labelWidth = 162;
             float top = y - labelHeight / 2f;
-            float bottom = y + labelHeight / 2f;
-
             SharpDX.Direct2D1.Brush background = GetBrush(renderTarget, level.Background);
             SharpDX.Direct2D1.Brush text = GetBrush(renderTarget, level.Text);
 
@@ -683,7 +696,7 @@ namespace NinjaTrader.NinjaScript.Indicators
         private SharpDX.Direct2D1.Brush GetBrush(D2D.RenderTarget renderTarget, Brush mediaBrush)
         {
             SolidColorBrush solid = mediaBrush as SolidColorBrush;
-            Color color = solid != null ? solid.Color : Colors.White;
+            System.Windows.Media.Color color = solid != null ? solid.Color : Colors.White;
             string key = string.Format("{0}:{1}:{2}:{3}", color.A, color.R, color.G, color.B);
 
             SharpDX.Direct2D1.Brush dxBrush;
