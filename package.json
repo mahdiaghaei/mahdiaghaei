@@ -1,0 +1,35 @@
+{
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc && vite build && electron-builder --dir",
+    "typecheck": "tsc --noEmit",
+    "prisma:generate": "prisma generate",
+    "db:push": "prisma db push"
+  },
+  "dependencies": {
+    "@emotion/react": "latest",
+    "@emotion/styled": "latest",
+    "@mui/icons-material": "latest",
+    "@mui/material": "latest",
+    "@prisma/client": "latest",
+    "@tiptap/extension-image": "latest",
+    "@tiptap/extension-table": "latest",
+    "@tiptap/extension-table-cell": "latest",
+    "@tiptap/extension-table-header": "latest",
+    "@tiptap/extension-table-row": "latest",
+    "@tiptap/react": "latest",
+    "@tiptap/starter-kit": "latest",
+    "echarts": "latest",
+    "echarts-for-react": "latest",
+    "electron": "latest",
+    "fabric": "latest",
+    "vite": "latest",
+    "@vitejs/plugin-react": "latest",
+    "typescript": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "prisma": "latest",
+    "electron-builder": "latest"
+  },
+  "devDependencies": {}
+}
