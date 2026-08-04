@@ -1,0 +1,2 @@
+import { CrudPage } from '../components/CrudPage';
+export default function ResearchPage(){ return <CrudPage title="Market Notes & Research" table="market_notes" fields={[{name:'title',label:'title'},{name:'category',label:'category',options:['Market Observation','AMT Concept','Trade Idea','Lesson','Article Note']},{name:'content',label:'content',type:'textarea'},{name:'tags',label:'tags'},{name:'date',label:'date',type:'date'}]}/> }

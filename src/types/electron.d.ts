@@ -1,0 +1,3 @@
+import type { TableName } from './index';
+declare global { interface Window { tradingOS: { db:{ list:<T>(table:TableName, filters?:Record<string,string>)=>Promise<T[]>; get:<T>(table:TableName,id:number|string)=>Promise<T|null>; create:<T>(table:TableName,record:Record<string,unknown>)=>Promise<T>; update:<T>(table:TableName,id:number|string,record:Record<string,unknown>)=>Promise<T>; remove:(table:TableName,id:number|string)=>Promise<boolean>; analytics:(filters?:Record<string,string>)=>Promise<any>; }; files:{ selectImage:()=>Promise<string|null>; backupDatabase:()=>Promise<string>; exportDatabase:()=>Promise<string>; importDatabase:()=>Promise<string>; getDatabasePath:()=>Promise<string>; }; } } }
+export {};

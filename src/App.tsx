@@ -1,0 +1,3 @@
+import { useState } from 'react'; import Dashboard from './pages/DashboardPage'; import DailyOps from './pages/DailyOpsPage'; import Trades from './pages/TradesPage'; import Playbook from './pages/PlaybookPage'; import Analytics from './pages/AnalyticsPage'; import Research from './pages/ResearchPage'; import Settings from './pages/SettingsPage'; import './styles.css';
+const pages:any={Dashboard, 'Daily OPS':DailyOps, Trades, Playbook, Analytics, Research, Settings};
+export default function App(){ const [page,setPage]=useState('Dashboard'); const Page=pages[page]; return <div className="app"><aside><h1>Trading OS</h1>{Object.keys(pages).map(p=><button className={p===page?'active':''} onClick={()=>setPage(p)} key={p}>{p}</button>)}</aside><main><Page/></main></div>}
