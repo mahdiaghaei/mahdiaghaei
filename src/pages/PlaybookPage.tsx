@@ -1,0 +1,2 @@
+import { CrudPage } from '../components/CrudPage';
+export default function PlaybookPage(){ const fields=['setup_name','market','description','conditions','entry_rules','invalidation','target_logic','examples'].map(name=>({name,label:name.replaceAll('_',' '),type:name==='setup_name'||name==='market'?'text':'textarea'})); return <CrudPage title="Playbook" table="playbook" fields={[...fields,{name:'number_of_trades',label:'number of trades',type:'number'},{name:'win_rate',label:'win rate',type:'number'},{name:'average_R',label:'average R',type:'number'}]}/> }
